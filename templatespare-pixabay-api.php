@@ -50,7 +50,7 @@ class TemplateSpare_Pixabay_API
       'q'          => urlencode($query),
       'image_type' => 'photo',
       'pretty'     => true,
-      'per_page'   => 30,
+      'per_page'   => 20,
     ], 'https://pixabay.com/api/');
 
     $response = wp_remote_get($url, [
