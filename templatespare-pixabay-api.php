@@ -42,6 +42,31 @@ class TemplateSpare_Pixabay_API
     $query = sanitize_text_field($request->get_param('query'));
     $lang  = sanitize_text_field($request->get_param('lang'));
 
+    // Words to exclude
+    $exclude_words = ['free', 'pro', 'child'];
+
+    // Split query into array and trim spaces
+    $query_array = array_map('trim', explode(',', $query));
+
+    // Remove excluded words (case-insensitive)
+    $query_array = array_filter($query_array, function ($item) use ($exclude_words) {
+      foreach ($exclude_words as $word) {
+        if (stripos($item, $word) !== false) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    // Rebuild query string
+    $query = implode(',', $query_array);
+
+    // Ensure max 100 characters
+    if (strlen($query) > 100) {
+      $query = substr($query, 0, 100);
+    }
+
+    // Compare with allowed Pixabay categories
     $compare_cat = [
       "backgrounds",
       "fashion",
@@ -65,38 +90,21 @@ class TemplateSpare_Pixabay_API
       "music"
     ];
 
-    // If query is empty, return early
-    if (empty($query)) {
-      return rest_ensure_response([]);
-    }
+    // Normalize to lowercase
+    $query_array_lower = array_map('strtolower', $query_array);
+    $compare_cat_lower = array_map('strtolower', $compare_cat);
 
-    // Step 1: Split query into array and trim spaces
-    $query_array = array_map('trim', explode(',', $query));
+    // Find common categories
+    $common_categories = array_values(array_intersect($query_array_lower, $compare_cat_lower));
 
-    // Step 2: Normalize to lowercase for comparison
-    $query_array_lower   = array_map('strtolower', $query_array);
-    $compare_cat_lower   = array_map('strtolower', $compare_cat);
-
-    // Step 3: Find common categories
-    $common_categories = array_intersect($query_array_lower, $compare_cat_lower);
-
-    // Optional: reindex array
-    $common_categories = array_values($common_categories);
-
-    // Step 4: Truncate $query if over 100 characters (your existing code)
-    if (strlen($query) > 100) {
-      $query = substr($query, 0, 100);
-    }
-
-    // Step 5: Build Pixabay API URL
+    // Build Pixabay API URL
     $url = add_query_arg([
       'key'         => $this->pixabay_api_key,
-      'q'           => urlencode($query),                      // your working query
+      'q'           => urlencode($query),
       'image_type'  => 'photo',
-      'pretty'      => true,
-      'lang'        => $lang,
+      'lang'        => $lang ?: 'en',
       'orientation' => 'horizontal',
-      'category'    => !empty($common_categories) ? $common_categories[0] : '', // first common category
+      'category'    => !empty($common_categories) ? $common_categories[0] : '',
       'per_page'    => 20,
     ], 'https://pixabay.com/api/');
 
