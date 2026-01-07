@@ -40,27 +40,64 @@ class TemplateSpare_Pixabay_API
   public function get_search_images(WP_REST_Request $request)
   {
     $query = sanitize_text_field($request->get_param('query'));
-    $lang = sanitize_text_field($request->get_param('lang'));
+    $lang  = sanitize_text_field($request->get_param('lang'));
 
+    $compare_cat = [
+      "backgrounds",
+      "fashion",
+      "nature",
+      "science",
+      "education",
+      "feelings",
+      "health",
+      "people",
+      "religion",
+      "places",
+      "animals",
+      "industry",
+      "computer",
+      "food",
+      "sports",
+      "transportation",
+      "travel",
+      "buildings",
+      "business",
+      "music"
+    ];
+
+    // If query is empty, return early
     if (empty($query)) {
       return rest_ensure_response([]);
     }
 
-    // join words with spaces
+    // Step 1: Split query into array and trim spaces
+    $query_array = array_map('trim', explode(',', $query));
+
+    // Step 2: Normalize to lowercase for comparison
+    $query_array_lower   = array_map('strtolower', $query_array);
+    $compare_cat_lower   = array_map('strtolower', $compare_cat);
+
+    // Step 3: Find common categories
+    $common_categories = array_intersect($query_array_lower, $compare_cat_lower);
+
+    // Optional: reindex array
+    $common_categories = array_values($common_categories);
+
+    // Step 4: Truncate $query if over 100 characters (your existing code)
     if (strlen($query) > 100) {
-      $query = substr($query, 0, 100);   // truncate to 100 chars
+      $query = substr($query, 0, 100);
     }
 
-
+    // Step 5: Build Pixabay API URL
     $url = add_query_arg([
-      'key'        => $this->pixabay_api_key,
-      'q'          => urlencode($query),
-      'image_type' => 'photo',
-      'pretty'     => true,
-      'lang' => $lang,
+      'key'         => $this->pixabay_api_key,
+      'q'           => urlencode($query),                      // your working query
+      'image_type'  => 'photo',
+      'pretty'      => true,
+      'lang'        => $lang,
       'orientation' => 'horizontal',
-      //'category' => urlencode($query),
-      'per_page'   => 20,
+      'category'    => !empty($common_categories) ? $common_categories[0] : '', // first common category
+      'per_page'    => 20,
     ], 'https://pixabay.com/api/');
 
     $response = wp_remote_get($url, [
