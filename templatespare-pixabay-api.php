@@ -46,6 +46,12 @@ class TemplateSpare_Pixabay_API
       return rest_ensure_response([]);
     }
 
+    // join words with spaces
+    if (strlen($query) > 100) {
+      $query = substr($query, 0, 100);   // truncate to 100 chars
+    }
+
+
     $url = add_query_arg([
       'key'        => $this->pixabay_api_key,
       'q'          => urlencode($query),
