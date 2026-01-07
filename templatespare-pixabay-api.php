@@ -48,12 +48,12 @@ class TemplateSpare_Pixabay_API
 
     $url = add_query_arg([
       'key'        => $this->pixabay_api_key,
-      //'q'          => urlencode($query),
+      'q'          => urlencode($query),
       'image_type' => 'photo',
       'pretty'     => true,
-      'lang'=>$lang,
-      'orientation'=>'horizontal',
-      'category'=> urlencode($query),
+      'lang' => $lang,
+      'orientation' => 'horizontal',
+      //'category' => urlencode($query),
       'per_page'   => 20,
     ], 'https://pixabay.com/api/');
 
