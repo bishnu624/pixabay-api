@@ -46,10 +46,7 @@ class TemplateSpare_Pixabay_API
       return rest_ensure_response([]);
     }
 
-    // Replace commas and spaces with +
-    $query = str_replace([',', ' '], '+', $query);
-
-    // Truncate to 100 characters if needed
+    // join words with spaces
     if (strlen($query) > 100) {
       $query = substr($query, 0, 100);   // truncate to 100 chars
     }
