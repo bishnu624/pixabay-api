@@ -40,6 +40,7 @@ class TemplateSpare_Pixabay_API
   public function get_search_images(WP_REST_Request $request)
   {
     $query = sanitize_text_field($request->get_param('query'));
+    $lang = sanitize_text_field($request->get_param('lang'));
 
     if (empty($query)) {
       return rest_ensure_response([]);
@@ -47,9 +48,12 @@ class TemplateSpare_Pixabay_API
 
     $url = add_query_arg([
       'key'        => $this->pixabay_api_key,
-      'q'          => urlencode($query),
+      //'q'          => urlencode($query),
       'image_type' => 'photo',
       'pretty'     => true,
+      'lang'=>$lang,
+      'orientation'=>'horizontal',
+      'category'=> urlencode($query),
       'per_page'   => 20,
     ], 'https://pixabay.com/api/');
 
