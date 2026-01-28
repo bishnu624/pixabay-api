@@ -145,11 +145,15 @@ class TemplateSpare_Pixabay_API
       'covid' => ['pixabay_category' => 'health', 'priority' => 5],
       'pandemic' => ['pixabay_category' => 'health', 'priority' => 5],
       'health' => ['pixabay_category' => 'health', 'priority' => 4],
-      'medical' => ['pixabay_category' => 'health', 'priority' => 4],
+      'medical' => ['pixabay_category' => 'health', 'priority' => 5], // ✅ ADD THIS
+      'healthcare' => ['pixabay_category' => 'health', 'priority' => 4], // ✅ ADD THIS
       'dental' => ['pixabay_category' => 'health', 'priority' => 5],
       'doctor' => ['pixabay_category' => 'health', 'priority' => 3],
+      'hospital' => ['pixabay_category' => 'health', 'priority' => 4], // ✅ ADD THIS
+      'nurse' => ['pixabay_category' => 'health', 'priority' => 4], // ✅ ADD THIS
+      'clinic' => ['pixabay_category' => 'health', 'priority' => 4], // ✅ ADD THIS
 
-      'real' => ['pixabay_category' => 'buildings', 'priority' => 3], // "real estate"
+      'real' => ['pixabay_category' => 'buildings', 'priority' => 3],
       'estate' => ['pixabay_category' => 'buildings', 'priority' => 3],
       'property' => ['pixabay_category' => 'buildings', 'priority' => 4],
       'house' => ['pixabay_category' => 'buildings', 'priority' => 4],
@@ -200,7 +204,6 @@ class TemplateSpare_Pixabay_API
       if (isset($category_mapping[$keyword_lower])) {
         $match = $category_mapping[$keyword_lower];
 
-        // Keep highest priority category
         if ($match['priority'] > $highest_priority) {
           $highest_priority = $match['priority'];
           $best_match = $match;
@@ -234,7 +237,13 @@ class TemplateSpare_Pixabay_API
       'portfolio',
       'education',
       'industry',
-      'health'
+      'health',
+      'medical',
+      'healthcare',
+      'hospital',
+      'doctor',
+      'nurse',
+      'clinic' // ✅ ADD THESE
     ];
 
     // Secondary keywords (descriptive)
@@ -295,7 +304,7 @@ class TemplateSpare_Pixabay_API
       }
     }
 
-    // ✅ Enhance based on detected category
+    // Enhance based on detected category
     $query_string = implode(' ', $selected_keywords);
 
     if (!empty($detected_category['pixabay_category'])) {
