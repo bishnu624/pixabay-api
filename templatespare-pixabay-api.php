@@ -44,8 +44,9 @@ class TemplateSpare_Pixabay_API
   {
     $query = sanitize_text_field($request->get_param('query'));
     $lang  = sanitize_text_field($request->get_param('lang'));
+    $content_category = sanitize_text_field($request->get_param('category')); // ✅ NEW
 
-    // ✅ Convert your language to Pixabay format
+    // Convert language
     $pixabay_lang = $this->get_pixabay_language($lang);
 
     // Words to exclude
@@ -54,7 +55,7 @@ class TemplateSpare_Pixabay_API
     // Split query into array and trim spaces
     $query_array = array_map('trim', explode(',', $query));
 
-    // Remove excluded words (case-insensitive)
+    // Remove excluded words
     $query_array = array_filter($query_array, function ($item) use ($exclude_words) {
       foreach ($exclude_words as $word) {
         if (stripos($item, $word) !== false) {
@@ -64,31 +65,40 @@ class TemplateSpare_Pixabay_API
       return true;
     });
 
-    // ✅ Enhance query based on language context
-    $enhanced_query = $this->enhance_query_with_language($query_array, $lang);
+    $query_string = implode(' ', $query_array);
+
+    // ✅ Enhance based on content category (pet, business, etc.)
+    $category_data = $this->enhance_query_by_category($query_string, $content_category);
+    $enhanced_query = $category_data['query'];
+    $pixabay_category = $category_data['category'];
+
+    // ✅ Further enhance with language context if needed
+    $enhanced_query = $this->enhance_query_with_language_context($enhanced_query, $lang);
 
     // Ensure max 100 characters
     if (strlen($enhanced_query) > 100) {
       $enhanced_query = substr($enhanced_query, 0, 100);
     }
 
-    // Smart category detection
-    $category = $this->detect_category($enhanced_query);
+    // If no category from content type, detect from query
+    if (empty($pixabay_category)) {
+      $pixabay_category = $this->detect_category($enhanced_query);
+    }
 
     // Build parameters
     $params = [
       'key'         => $this->pixabay_api_key,
       'q'           => urlencode($enhanced_query),
       'image_type'  => 'photo',
-      'lang'        => $pixabay_lang, // ✅ Use converted language
+      'lang'        => $pixabay_lang,
       'orientation' => 'horizontal',
       'order'       => 'popular',
       'per_page'    => 50,
       'safesearch'  => 'true',
     ];
 
-    if (!empty($category)) {
-      $params['category'] = $category;
+    if (!empty($pixabay_category)) {
+      $params['category'] = $pixabay_category;
     }
 
     $url = add_query_arg($params, 'https://pixabay.com/api/');
@@ -125,7 +135,140 @@ class TemplateSpare_Pixabay_API
   }
 
   /**
-   * ✅ Map your custom language names to Pixabay language codes
+   * ✅ Enhance query based on content category
+   */
+  private function enhance_query_by_category($query, $content_category)
+  {
+    $query_lower = strtolower($query);
+    $category_lower = strtolower($content_category);
+
+    $category_config = [
+      'pet' => [
+        'keywords' => ['pet', 'animal', 'dog', 'cat', 'puppy', 'kitten'],
+        'pixabay_category' => 'animals',
+        'boost_terms' => [
+          'news' => 'pet news animal',
+          'magazine' => 'pet magazine animal',
+          'care' => 'pet care veterinary',
+          'training' => 'pet training dog',
+        ]
+      ],
+      'business' => [
+        'keywords' => ['business', 'professional', 'office', 'corporate', 'meeting'],
+        'pixabay_category' => 'business',
+        'boost_terms' => [
+          'news' => 'business news professional',
+          'magazine' => 'business magazine corporate',
+          'meeting' => 'business meeting office',
+        ]
+      ],
+      'ecommerce' => [
+        'keywords' => ['shopping', 'ecommerce', 'online store', 'retail', 'commerce'],
+        'pixabay_category' => 'business',
+        'boost_terms' => [
+          'news' => 'ecommerce shopping online',
+          'magazine' => 'retail magazine shopping',
+          'store' => 'online store ecommerce',
+        ]
+      ],
+      'lifestyle' => [
+        'keywords' => ['lifestyle', 'living', 'wellness', 'daily life', 'health'],
+        'pixabay_category' => 'people',
+        'boost_terms' => [
+          'news' => 'lifestyle wellness living',
+          'magazine' => 'lifestyle magazine wellness',
+          'health' => 'healthy lifestyle wellness',
+        ]
+      ],
+      'personal' => [
+        'keywords' => ['personal', 'individual', 'portrait', 'people', 'person'],
+        'pixabay_category' => 'people',
+        'boost_terms' => [
+          'news' => 'personal story people',
+          'magazine' => 'personal lifestyle people',
+          'blog' => 'personal blog portrait',
+        ]
+      ],
+    ];
+
+    if (!isset($category_config[$category_lower])) {
+      return [
+        'query' => $query,
+        'category' => ''
+      ];
+    }
+
+    $config = $category_config[$category_lower];
+
+    // Check if query already has category context
+    $has_context = false;
+    foreach ($config['keywords'] as $keyword) {
+      if (stripos($query_lower, $keyword) !== false) {
+        $has_context = true;
+        break;
+      }
+    }
+
+    $enhanced_query = $query;
+
+    // If no context, add it
+    if (!$has_context) {
+      // Check for boost terms (more specific matching)
+      $boost_applied = false;
+      foreach ($config['boost_terms'] as $trigger => $boosted) {
+        if (stripos($query_lower, $trigger) !== false) {
+          $enhanced_query = $boosted;
+          $boost_applied = true;
+          break;
+        }
+      }
+
+      // If no boost term matched, just add main category keyword
+      if (!$boost_applied) {
+        $enhanced_query = $query . ' ' . $config['keywords'][0];
+      }
+    }
+
+    return [
+      'query' => trim($enhanced_query),
+      'category' => $config['pixabay_category']
+    ];
+  }
+
+  /**
+   * ✅ Add language context
+   */
+  private function enhance_query_with_language_context($query, $lang)
+  {
+    $query_lower = strtolower($query);
+    $lang_lower = strtolower($lang);
+
+    $language_keywords = [
+      'china'    => ['chinese', 'china'],
+      'japanese' => ['japanese', 'japan'],
+      'indian'   => ['indian', 'india'],
+      'nepali'   => ['nepali', 'nepal'],
+    ];
+
+    if (isset($language_keywords[$lang_lower])) {
+      $has_language = false;
+      foreach ($language_keywords[$lang_lower] as $keyword) {
+        if (stripos($query_lower, $keyword) !== false) {
+          $has_language = true;
+          break;
+        }
+      }
+
+      if (!$has_language) {
+        $query .= ' ' . $language_keywords[$lang_lower][0];
+      }
+    }
+
+    return trim($query);
+  }
+
+  /**
+   * ✅ Map languages
    */
   private function get_pixabay_language($lang)
   {
@@ -133,13 +276,13 @@ class TemplateSpare_Pixabay_API
       'english'  => 'en',
       'french'   => 'fr',
       'german'   => 'de',
-      'nepali'   => 'en', // Not supported, fallback to English
-      'rtl'      => 'ar', // RTL → Arabic
-      'indian'   => 'en', // Hindi not supported, fallback to English
+      'nepali'   => 'en',
+      'rtl'      => 'ar',
+      'indian'   => 'en',
       'spanish'  => 'es',
       'russian'  => 'ru',
       'japanese' => 'ja',
-      'china'    => 'zh', // Chinese
+      'china'    => 'zh',
       'turkish'  => 'tr',
     ];
 
@@ -147,76 +290,20 @@ class TemplateSpare_Pixabay_API
   }
 
   /**
-   * ✅ Enhance query with language-specific context
-   */
-  private function enhance_query_with_language($query_array, $lang)
-  {
-    $query_string = implode(' ', $query_array);
-    $query_lower = strtolower($query_string);
-
-    // Language-specific enhancements
-    $language_keywords = [
-      'china'    => ['chinese', 'china', 'asian'],
-      'japanese' => ['japanese', 'japan', 'asian'],
-      'indian'   => ['indian', 'india', 'asian'],
-      'rtl'      => ['arabic', 'middle east', 'arabic'],
-      'nepali'   => ['nepali', 'nepal', 'himalayan'],
-    ];
-
-    // Check if we need to add language context
-    $lang_lower = strtolower($lang);
-
-    // Don't add language keywords if query already contains them
-    if (isset($language_keywords[$lang_lower])) {
-      $has_language_context = false;
-      foreach ($language_keywords[$lang_lower] as $keyword) {
-        if (stripos($query_lower, $keyword) !== false) {
-          $has_language_context = true;
-          break;
-        }
-      }
-
-      // Add language context if not present
-      if (!$has_language_context && in_array($lang_lower, ['china', 'japanese', 'indian', 'nepali'])) {
-        $query_string .= ' ' . $language_keywords[$lang_lower][0];
-      }
-    }
-
-    // General query enhancements
-    $enhancements = [
-      'news media' => 'news media journalism',
-      'local news' => 'local news reporter',
-      'magazine' => 'magazine publication',
-      'newspaper' => 'newspaper press',
-    ];
-
-    foreach ($enhancements as $key => $value) {
-      if (stripos($query_lower, $key) !== false && $query_string === $query_lower) {
-        $query_string = $value;
-        break;
-      }
-    }
-
-    return trim($query_string);
-  }
-
-  /**
-   * ✅ Smart category detection
+   * ✅ Detect category from query
    */
   private function detect_category($query)
   {
     $query_lower = strtolower($query);
 
     $category_keywords = [
-      'people' => ['portrait', 'person', 'man', 'woman', 'people', 'reporter', 'journalist'],
-      'business' => ['news', 'media', 'office', 'meeting', 'professional', 'magazine', 'newspaper'],
-      'places' => ['china', 'japan', 'india', 'nepal', 'location', 'regional', 'local'],
-      'religion' => ['temple', 'religious', 'spiritual', 'shrine', 'monastery'],
-      'buildings' => ['architecture', 'building', 'city', 'urban'],
-      'nature' => ['nature', 'landscape', 'mountain', 'himalayan'],
-      'food' => ['food', 'cuisine', 'dish', 'cooking'],
-      'travel' => ['travel', 'tourism', 'destination'],
-      'music' => ['music', 'concert', 'instrument'],
+      'animals' => ['pet', 'dog', 'cat', 'animal', 'puppy', 'kitten', 'bird'],
+      'business' => ['news', 'media', 'office', 'meeting', 'professional', 'business', 'corporate', 'ecommerce', 'shopping'],
+      'people' => ['portrait', 'person', 'people', 'lifestyle', 'personal', 'reporter', 'journalist'],
+      'places' => ['china', 'japan', 'india', 'nepal', 'location', 'regional', 'local', 'city'],
+      'nature' => ['nature', 'landscape', 'outdoor', 'mountain', 'forest'],
+      'food' => ['food', 'cuisine', 'cooking', 'restaurant'],
+      'health' => ['health', 'wellness', 'medical', 'fitness'],
     ];
 
     foreach ($category_keywords as $category => $keywords) {
@@ -231,7 +318,7 @@ class TemplateSpare_Pixabay_API
   }
 
   /**
-   * ✅ Filter low-quality images
+   * ✅ Filter quality
    */
   private function filter_quality_images($images, $min_likes = 10)
   {
