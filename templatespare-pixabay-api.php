@@ -37,23 +37,19 @@ class TemplateSpare_Pixabay_API
     ));
   }
 
-  /**
-   * Fetch images from Pixabay
-   */
   public function get_search_images(WP_REST_Request $request)
   {
     $query = sanitize_text_field($request->get_param('query'));
     $lang  = sanitize_text_field($request->get_param('lang'));
-    $content_category = sanitize_text_field($request->get_param('category')); // ✅ NEW
 
     // Convert language
     $pixabay_lang = $this->get_pixabay_language($lang);
 
     // Words to exclude
-    $exclude_words = ['free', 'pro', 'child'];
+    $exclude_words = ['free', 'pro', 'child', 'elementor']; // ✅ Added elementor to exclude
 
     // Split query into array and trim spaces
-    $query_array = array_map('trim', explode(',', $query));
+    $query_array = array_map('trim', explode(' ', $query)); // ✅ Changed from ',' to ' '
 
     // Remove excluded words
     $query_array = array_filter($query_array, function ($item) use ($exclude_words) {
@@ -65,30 +61,24 @@ class TemplateSpare_Pixabay_API
       return true;
     });
 
-    $query_string = implode(' ', $query_array);
+    // ✅ NEW: Detect category from keywords in the query
+    $detected_category = $this->detect_category_from_keywords($query_array);
 
-    // ✅ Enhance based on content category (pet, business, etc.)
-    $category_data = $this->enhance_query_by_category($query_string, $content_category);
-    $enhanced_query = $category_data['query'];
-    $pixabay_category = $category_data['category'];
-
-    // ✅ Further enhance with language context if needed
-    $enhanced_query = $this->enhance_query_with_language_context($enhanced_query, $lang);
+    // ✅ NEW: Smart keyword selection and enhancement
+    $optimized_query = $this->optimize_query_keywords($query_array, $detected_category);
 
     // Ensure max 100 characters
-    if (strlen($enhanced_query) > 100) {
-      $enhanced_query = substr($enhanced_query, 0, 100);
+    if (strlen($optimized_query) > 100) {
+      $optimized_query = substr($optimized_query, 0, 100);
     }
 
-    // If no category from content type, detect from query
-    if (empty($pixabay_category)) {
-      $pixabay_category = $this->detect_category($enhanced_query);
-    }
+    // Add language context if needed
+    $optimized_query = $this->enhance_query_with_language_context($optimized_query, $lang);
 
     // Build parameters
     $params = [
       'key'         => $this->pixabay_api_key,
-      'q'           => urlencode($enhanced_query),
+      'q'           => urlencode($optimized_query),
       'image_type'  => 'photo',
       'lang'        => $pixabay_lang,
       'orientation' => 'horizontal',
@@ -97,8 +87,9 @@ class TemplateSpare_Pixabay_API
       'safesearch'  => 'true',
     ];
 
-    if (!empty($pixabay_category)) {
-      $params['category'] = $pixabay_category;
+    // Add category if detected
+    if (!empty($detected_category['pixabay_category'])) {
+      $params['category'] = $detected_category['pixabay_category'];
     }
 
     $url = add_query_arg($params, 'https://pixabay.com/api/');
@@ -128,264 +119,255 @@ class TemplateSpare_Pixabay_API
     $images = $this->filter_quality_images($images, 10);
 
     // Sort by relevance
-    $images = $this->sort_by_relevance($images, $enhanced_query);
+    $images = $this->sort_by_relevance($images, $optimized_query);
 
     // Return top 20
     return rest_ensure_response(array_slice($images, 0, 20));
   }
 
   /**
-   * ✅ Enhanced query based on content category with ALL categories
+   * ✅ NEW: Detect category from keywords in query
    */
-  private function enhance_query_by_category($query, $content_category)
+  private function detect_category_from_keywords($keywords_array)
   {
-    $query_lower = strtolower($query);
-    $category_lower = strtolower($content_category);
+    $category_mapping = [
+      // Content type categories
+      'pet' => ['pixabay_category' => 'animals', 'priority' => 5],
+      'animal' => ['pixabay_category' => 'animals', 'priority' => 5],
+      'dog' => ['pixabay_category' => 'animals', 'priority' => 5],
+      'cat' => ['pixabay_category' => 'animals', 'priority' => 5],
 
-    $category_config = [
-      'pet' => [
-        'keywords' => ['pet', 'animal', 'dog', 'cat', 'puppy', 'kitten'],
-        'pixabay_category' => 'animals',
-        'boost_terms' => [
-          'news' => 'pet news animal',
-          'magazine' => 'pet magazine animal care',
-          'care' => 'pet care veterinary',
-          'training' => 'pet training dog cat',
-        ]
-      ],
-      'business' => [
-        'keywords' => ['business', 'professional', 'office', 'corporate', 'meeting'],
-        'pixabay_category' => 'business',
-        'boost_terms' => [
-          'news' => 'business news professional',
-          'magazine' => 'business magazine corporate',
-          'meeting' => 'business meeting office',
-          'team' => 'business team professional',
-        ]
-      ],
-      'ecommerce' => [
-        'keywords' => ['shopping', 'ecommerce', 'online store', 'retail', 'commerce'],
-        'pixabay_category' => 'business',
-        'boost_terms' => [
-          'news' => 'ecommerce shopping online',
-          'magazine' => 'retail magazine shopping',
-          'store' => 'online store ecommerce',
-          'cart' => 'shopping cart online',
-        ]
-      ],
-      'lifestyle' => [
-        'keywords' => ['lifestyle', 'living', 'wellness', 'daily life', 'health'],
-        'pixabay_category' => 'people',
-        'boost_terms' => [
-          'news' => 'lifestyle wellness living',
-          'magazine' => 'lifestyle magazine wellness',
-          'health' => 'healthy lifestyle wellness',
-          'home' => 'lifestyle home living',
-        ]
-      ],
-      'personal' => [
-        'keywords' => ['personal', 'individual', 'portrait', 'people', 'person'],
-        'pixabay_category' => 'people',
-        'boost_terms' => [
-          'news' => 'personal story people',
-          'magazine' => 'personal lifestyle people',
-          'blog' => 'personal blog portrait',
-          'story' => 'personal story individual',
-        ]
-      ],
-      // ✅ NEW CATEGORIES
-      'food' => [
-        'keywords' => ['food', 'cuisine', 'cooking', 'restaurant', 'dish', 'meal'],
-        'pixabay_category' => 'food',
-        'boost_terms' => [
-          'news' => 'food cuisine culinary',
-          'magazine' => 'food magazine culinary',
-          'restaurant' => 'restaurant food dining',
-          'recipe' => 'recipe cooking food',
-          'chef' => 'chef cooking professional',
-        ]
-      ],
-      'covid' => [
-        'keywords' => ['covid', 'pandemic', 'coronavirus', 'virus', 'health crisis'],
-        'pixabay_category' => 'health',
-        'boost_terms' => [
-          'news' => 'covid pandemic health',
-          'vaccine' => 'covid vaccine medical',
-          'safety' => 'covid safety health',
-          'hospital' => 'covid hospital medical',
-          'mask' => 'face mask covid',
-        ]
-      ],
-      'real estate' => [
-        'keywords' => ['real estate', 'property', 'house', 'home', 'building', 'architecture'],
-        'pixabay_category' => 'buildings',
-        'boost_terms' => [
-          'news' => 'real estate property housing',
-          'magazine' => 'real estate magazine property',
-          'market' => 'real estate market housing',
-          'house' => 'house home property',
-          'apartment' => 'apartment building real estate',
-        ]
-      ],
-      'dental' => [
-        'keywords' => ['dental', 'dentist', 'teeth', 'oral health', 'smile'],
-        'pixabay_category' => 'health',
-        'boost_terms' => [
-          'news' => 'dental health teeth',
-          'clinic' => 'dental clinic dentist',
-          'care' => 'dental care oral health',
-          'smile' => 'smile teeth dental',
-          'treatment' => 'dental treatment clinic',
-        ]
-      ],
-      'portfolio' => [
-        'keywords' => ['portfolio', 'design', 'creative', 'work', 'showcase'],
-        'pixabay_category' => 'business',
-        'boost_terms' => [
-          'news' => 'portfolio work professional',
-          'design' => 'design portfolio creative',
-          'creative' => 'creative portfolio design',
-          'work' => 'portfolio work showcase',
-          'project' => 'portfolio project design',
-        ]
-      ],
-      'gadgets' => [
-        'keywords' => ['gadget', 'technology', 'device', 'electronics', 'tech'],
-        'pixabay_category' => 'computer',
-        'boost_terms' => [
-          'news' => 'gadget technology tech',
-          'magazine' => 'gadget magazine technology',
-          'review' => 'gadget review technology',
-          'phone' => 'smartphone gadget technology',
-          'device' => 'device gadget electronics',
-        ]
-      ],
-      'lawyer' => [
-        'keywords' => ['lawyer', 'legal', 'law', 'attorney', 'justice', 'court'],
-        'pixabay_category' => 'business',
-        'boost_terms' => [
-          'news' => 'lawyer legal law',
-          'office' => 'lawyer office legal',
-          'court' => 'court law legal',
-          'justice' => 'justice law legal',
-          'attorney' => 'attorney lawyer legal',
-        ]
-      ],
-      'health' => [
-        'keywords' => ['health', 'medical', 'healthcare', 'wellness', 'doctor'],
-        'pixabay_category' => 'health',
-        'boost_terms' => [
-          'news' => 'health medical healthcare',
-          'magazine' => 'health magazine wellness',
-          'doctor' => 'doctor medical healthcare',
-          'hospital' => 'hospital medical healthcare',
-          'care' => 'healthcare medical wellness',
-        ]
-      ],
-      'education' => [
-        'keywords' => ['education', 'school', 'learning', 'student', 'teacher', 'university'],
-        'pixabay_category' => 'education',
-        'boost_terms' => [
-          'news' => 'education school learning',
-          'magazine' => 'education magazine school',
-          'student' => 'student education learning',
-          'teacher' => 'teacher education school',
-          'university' => 'university education college',
-        ]
-      ],
-      'industry' => [
-        'keywords' => ['industry', 'manufacturing', 'factory', 'production', 'industrial'],
-        'pixabay_category' => 'industry',
-        'boost_terms' => [
-          'news' => 'industry manufacturing production',
-          'magazine' => 'industry magazine manufacturing',
-          'factory' => 'factory industry manufacturing',
-          'production' => 'production industry manufacturing',
-          'worker' => 'industry worker manufacturing',
-        ]
-      ],
+      'food' => ['pixabay_category' => 'food', 'priority' => 5],
+      'cuisine' => ['pixabay_category' => 'food', 'priority' => 4],
+      'restaurant' => ['pixabay_category' => 'food', 'priority' => 4],
+      'cooking' => ['pixabay_category' => 'food', 'priority' => 4],
+
+      'covid' => ['pixabay_category' => 'health', 'priority' => 5],
+      'pandemic' => ['pixabay_category' => 'health', 'priority' => 5],
+      'health' => ['pixabay_category' => 'health', 'priority' => 4],
+      'medical' => ['pixabay_category' => 'health', 'priority' => 4],
+      'dental' => ['pixabay_category' => 'health', 'priority' => 5],
+      'doctor' => ['pixabay_category' => 'health', 'priority' => 3],
+
+      'real' => ['pixabay_category' => 'buildings', 'priority' => 3], // "real estate"
+      'estate' => ['pixabay_category' => 'buildings', 'priority' => 3],
+      'property' => ['pixabay_category' => 'buildings', 'priority' => 4],
+      'house' => ['pixabay_category' => 'buildings', 'priority' => 4],
+      'building' => ['pixabay_category' => 'buildings', 'priority' => 3],
+
+      'gadget' => ['pixabay_category' => 'computer', 'priority' => 5],
+      'gadgets' => ['pixabay_category' => 'computer', 'priority' => 5],
+      'technology' => ['pixabay_category' => 'computer', 'priority' => 4],
+      'tech' => ['pixabay_category' => 'computer', 'priority' => 4],
+      'device' => ['pixabay_category' => 'computer', 'priority' => 3],
+
+      'lawyer' => ['pixabay_category' => 'business', 'priority' => 5],
+      'legal' => ['pixabay_category' => 'business', 'priority' => 4],
+      'attorney' => ['pixabay_category' => 'business', 'priority' => 5],
+
+      'education' => ['pixabay_category' => 'education', 'priority' => 5],
+      'school' => ['pixabay_category' => 'education', 'priority' => 4],
+      'student' => ['pixabay_category' => 'education', 'priority' => 4],
+      'teacher' => ['pixabay_category' => 'education', 'priority' => 4],
+
+      'industry' => ['pixabay_category' => 'industry', 'priority' => 5],
+      'factory' => ['pixabay_category' => 'industry', 'priority' => 4],
+      'manufacturing' => ['pixabay_category' => 'industry', 'priority' => 4],
+
+      // Generic categories (lower priority)
+      'business' => ['pixabay_category' => 'business', 'priority' => 3],
+      'office' => ['pixabay_category' => 'business', 'priority' => 2],
+      'news' => ['pixabay_category' => 'business', 'priority' => 2],
+      'media' => ['pixabay_category' => 'business', 'priority' => 2],
+      'magazine' => ['pixabay_category' => 'business', 'priority' => 2],
+
+      'lifestyle' => ['pixabay_category' => 'people', 'priority' => 3],
+      'personal' => ['pixabay_category' => 'people', 'priority' => 2],
+      'people' => ['pixabay_category' => 'people', 'priority' => 2],
+      'portrait' => ['pixabay_category' => 'people', 'priority' => 3],
+
+      'design' => ['pixabay_category' => 'business', 'priority' => 2],
+      'creative' => ['pixabay_category' => 'business', 'priority' => 2],
+      'portfolio' => ['pixabay_category' => 'business', 'priority' => 3],
     ];
 
-    if (!isset($category_config[$category_lower])) {
-      return [
-        'query' => $query,
-        'category' => ''
-      ];
-    }
+    $best_match = null;
+    $highest_priority = 0;
 
-    $config = $category_config[$category_lower];
+    foreach ($keywords_array as $keyword) {
+      $keyword_lower = strtolower(trim($keyword));
 
-    // Check if query already has category context
-    $has_context = false;
-    foreach ($config['keywords'] as $keyword) {
-      if (stripos($query_lower, $keyword) !== false) {
-        $has_context = true;
-        break;
+      if (isset($category_mapping[$keyword_lower])) {
+        $match = $category_mapping[$keyword_lower];
+
+        // Keep highest priority category
+        if ($match['priority'] > $highest_priority) {
+          $highest_priority = $match['priority'];
+          $best_match = $match;
+        }
       }
     }
 
-    $enhanced_query = $query;
+    return $best_match ?? ['pixabay_category' => '', 'priority' => 0];
+  }
 
-    // If no context, add it
-    if (!$has_context) {
-      // Check for boost terms (more specific matching)
-      $boost_applied = false;
-      foreach ($config['boost_terms'] as $trigger => $boosted) {
+  /**
+   * ✅ NEW: Optimize and combine keywords intelligently
+   */
+  private function optimize_query_keywords($keywords_array, $detected_category)
+  {
+    $keywords_lower = array_map('strtolower', array_map('trim', $keywords_array));
+
+    // Priority keywords (most specific/important)
+    $priority_keywords = [
+      'food',
+      'covid',
+      'pandemic',
+      'dental',
+      'gadgets',
+      'gadget',
+      'lawyer',
+      'attorney',
+      'pet',
+      'real',
+      'estate',
+      'portfolio',
+      'education',
+      'industry',
+      'health'
+    ];
+
+    // Secondary keywords (descriptive)
+    $secondary_keywords = [
+      'news',
+      'media',
+      'magazine',
+      'lifestyle',
+      'personal',
+      'design',
+      'creative',
+      'business'
+    ];
+
+    // Generic keywords (usually not needed)
+    $generic_keywords = [
+      'the',
+      'and',
+      'or',
+      'a',
+      'an',
+      'of',
+      'in',
+      'to',
+      'for'
+    ];
+
+    $selected_keywords = [];
+
+    // Step 1: Add all priority keywords
+    foreach ($keywords_lower as $keyword) {
+      if (in_array($keyword, $priority_keywords)) {
+        $selected_keywords[] = $keyword;
+      }
+    }
+
+    // Step 2: Add up to 2 secondary keywords if we have less than 3 keywords
+    if (count($selected_keywords) < 3) {
+      foreach ($keywords_lower as $keyword) {
+        if (in_array($keyword, $secondary_keywords) && !in_array($keyword, $selected_keywords)) {
+          $selected_keywords[] = $keyword;
+          if (count($selected_keywords) >= 3) break;
+        }
+      }
+    }
+
+    // Step 3: If still low on keywords, add other non-generic ones
+    if (count($selected_keywords) < 2) {
+      foreach ($keywords_lower as $keyword) {
+        if (
+          !in_array($keyword, $generic_keywords) &&
+          !in_array($keyword, $selected_keywords) &&
+          strlen($keyword) > 2
+        ) {
+          $selected_keywords[] = $keyword;
+          if (count($selected_keywords) >= 3) break;
+        }
+      }
+    }
+
+    // ✅ Enhance based on detected category
+    $query_string = implode(' ', $selected_keywords);
+
+    if (!empty($detected_category['pixabay_category'])) {
+      $query_string = $this->add_category_context($query_string, $detected_category);
+    }
+
+    return trim($query_string);
+  }
+
+  /**
+   * ✅ Add specific context based on detected category
+   */
+  private function add_category_context($query, $detected_category)
+  {
+    $query_lower = strtolower($query);
+
+    $category_enhancements = [
+      'food' => [
+        'triggers' => ['news', 'magazine', 'media'],
+        'add' => 'cuisine culinary'
+      ],
+      'health' => [
+        'triggers' => ['news', 'magazine', 'media'],
+        'add' => 'medical healthcare'
+      ],
+      'animals' => [
+        'triggers' => ['news', 'magazine', 'media'],
+        'add' => 'animal care'
+      ],
+      'computer' => [
+        'triggers' => ['news', 'magazine', 'media'],
+        'add' => 'technology electronics'
+      ],
+      'buildings' => [
+        'triggers' => ['news', 'magazine', 'media'],
+        'add' => 'property architecture'
+      ],
+      'education' => [
+        'triggers' => ['news', 'magazine', 'media'],
+        'add' => 'learning academic'
+      ],
+      'industry' => [
+        'triggers' => ['news', 'magazine', 'media'],
+        'add' => 'manufacturing production'
+      ],
+    ];
+
+    $pixabay_cat = $detected_category['pixabay_category'];
+
+    if (isset($category_enhancements[$pixabay_cat])) {
+      $enhancement = $category_enhancements[$pixabay_cat];
+
+      // Check if query contains trigger words
+      foreach ($enhancement['triggers'] as $trigger) {
         if (stripos($query_lower, $trigger) !== false) {
-          $enhanced_query = $boosted;
-          $boost_applied = true;
+          // Add enhancement if not already present
+          $words_to_add = explode(' ', $enhancement['add']);
+          foreach ($words_to_add as $word) {
+            if (stripos($query_lower, $word) === false) {
+              $query .= ' ' . $word;
+            }
+          }
           break;
         }
       }
-
-      // If no boost term matched, just add main category keyword
-      if (!$boost_applied) {
-        $enhanced_query = $query . ' ' . $config['keywords'][0];
-      }
     }
 
-    return [
-      'query' => trim($enhanced_query),
-      'category' => $config['pixabay_category']
-    ];
+    return trim($query);
   }
 
   /**
-   * ✅ Updated detect_category with new categories
-   */
-  private function detect_category($query)
-  {
-    $query_lower = strtolower($query);
-
-    $category_keywords = [
-      'animals' => ['pet', 'dog', 'cat', 'animal', 'puppy', 'kitten', 'bird', 'wildlife'],
-      'business' => ['news', 'media', 'office', 'meeting', 'professional', 'business', 'corporate', 'ecommerce', 'shopping', 'lawyer', 'legal', 'portfolio'],
-      'people' => ['portrait', 'person', 'people', 'lifestyle', 'personal', 'reporter', 'journalist', 'individual'],
-      'places' => ['china', 'japan', 'india', 'nepal', 'location', 'regional', 'local', 'city', 'country'],
-      'nature' => ['nature', 'landscape', 'outdoor', 'mountain', 'forest', 'environment'],
-      'food' => ['food', 'cuisine', 'cooking', 'restaurant', 'dish', 'meal', 'recipe', 'chef'],
-      'health' => ['health', 'wellness', 'medical', 'fitness', 'doctor', 'hospital', 'covid', 'pandemic', 'dental', 'dentist'],
-      'buildings' => ['real estate', 'property', 'house', 'home', 'building', 'architecture', 'apartment'],
-      'computer' => ['gadget', 'technology', 'device', 'electronics', 'tech', 'smartphone', 'digital'],
-      'education' => ['education', 'school', 'learning', 'student', 'teacher', 'university', 'college'],
-      'industry' => ['industry', 'manufacturing', 'factory', 'production', 'industrial', 'worker'],
-      'transportation' => ['car', 'vehicle', 'transport', 'travel', 'road'],
-      'sports' => ['sport', 'fitness', 'exercise', 'gym', 'athlete'],
-    ];
-
-    foreach ($category_keywords as $category => $keywords) {
-      foreach ($keywords as $keyword) {
-        if (stripos($query_lower, $keyword) !== false) {
-          return $category;
-        }
-      }
-    }
-
-    return '';
-  }
-
-  /**
-   * ✅ Add language context
+   * ✅ Language context enhancement
    */
   private function enhance_query_with_language_context($query, $lang)
   {
@@ -397,6 +379,11 @@ class TemplateSpare_Pixabay_API
       'japanese' => ['japanese', 'japan'],
       'indian'   => ['indian', 'india'],
       'nepali'   => ['nepali', 'nepal'],
+      'spanish'  => ['spanish', 'spain'],
+      'french'   => ['french', 'france'],
+      'german'   => ['german', 'germany'],
+      'russian'  => ['russian', 'russia'],
+      'turkish'  => ['turkish', 'turkey'],
     ];
 
     if (isset($language_keywords[$lang_lower])) {
@@ -408,7 +395,8 @@ class TemplateSpare_Pixabay_API
         }
       }
 
-      if (!$has_language) {
+      // Only add language context if query length allows
+      if (!$has_language && strlen($query) < 80) {
         $query .= ' ' . $language_keywords[$lang_lower][0];
       }
     }
@@ -417,7 +405,7 @@ class TemplateSpare_Pixabay_API
   }
 
   /**
-   * ✅ Map languages
+   * ✅ Language mapping
    */
   private function get_pixabay_language($lang)
   {
@@ -437,8 +425,6 @@ class TemplateSpare_Pixabay_API
 
     return $language_map[strtolower($lang)] ?? 'en';
   }
-
-
 
   /**
    * ✅ Filter quality
@@ -464,18 +450,22 @@ class TemplateSpare_Pixabay_API
       foreach ($query_terms as $term) {
         if (empty($term)) continue;
 
+        // Exact match
         if (strpos($tags, $term) !== false) {
           $relevance_score += 20;
         }
 
-        if (stripos($tags, substr($term, 0, 4)) !== false) {
+        // Partial match
+        if (strlen($term) > 3 && stripos($tags, substr($term, 0, 4)) !== false) {
           $relevance_score += 5;
         }
       }
 
+      // Popularity boost
       $relevance_score += min(($image['likes'] ?? 0) / 50, 10);
       $relevance_score += min(($image['downloads'] ?? 0) / 1000, 10);
 
+      // Quality boost
       if (($image['imageWidth'] ?? 0) >= 1920) {
         $relevance_score += 5;
       }
