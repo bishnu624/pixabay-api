@@ -20,7 +20,10 @@ class TemplateSpare_Pixabay_API
   {
     $this->pixabay_api_key = defined('AF_API_TOKEN') ? AF_API_TOKEN : '';
     add_action('rest_api_init', [$this, 'register_routes']);
+    add_shortcode('latest_world_news', [$this, 'lwn_display_latest_news']);
   }
+
+
 
   /**
    * Register REST API routes
@@ -58,8 +61,23 @@ class TemplateSpare_Pixabay_API
       return true;
     });
 
+    // ✅ NEW: Map news-related terms to better keywords
+    $keyword_mapping = [
+      'news media' => 'journalism newspaper',
+      'local news' => 'news reporter',
+      'regional news' => 'news broadcasting',
+      'media' => 'journalism',
+      'news' => 'newspaper journalist',
+    ];
+
+    // Apply keyword mapping for better results
+    $query_array = array_map(function ($term) use ($keyword_mapping) {
+      $term_lower = strtolower(trim($term));
+      return $keyword_mapping[$term_lower] ?? $term;
+    }, $query_array);
+
     // Rebuild query string
-    $query = implode(',', $query_array);
+    $query = implode(' ', $query_array); // ✅ Changed from comma to space
 
     // Ensure max 100 characters
     if (strlen($query) > 100) {
@@ -86,27 +104,40 @@ class TemplateSpare_Pixabay_API
       "transportation",
       "travel",
       "buildings",
-      "business",
+      "business", // ✅ Best for news/media
       "music"
     ];
 
-    // Normalize to lowercase
-    $query_array_lower = array_map('strtolower', $query_array);
-    $compare_cat_lower = array_map('strtolower', $compare_cat);
+    // ✅ NEW: Smart category detection for news-related queries
+    $category = '';
+    $query_lower = strtolower($query);
 
-    // Find common categories
-    $common_categories = array_values(array_intersect($query_array_lower, $compare_cat_lower));
+    if (preg_match('/\b(news|media|journalist|newspaper|broadcasting|reporter)\b/i', $query_lower)) {
+      $category = 'business'; // Best category for news images
+    } else {
+      // Original category matching logic
+      $query_array_lower = array_map('strtolower', explode(' ', $query));
+      $compare_cat_lower = array_map('strtolower', $compare_cat);
+      $common_categories = array_values(array_intersect($query_array_lower, $compare_cat_lower));
+      $category = !empty($common_categories) ? $common_categories[0] : '';
+    }
 
-    // Build Pixabay API URL
-    $url = add_query_arg([
+    // ✅ NEW: Add order parameter for better relevance
+    $params = [
       'key'         => $this->pixabay_api_key,
       'q'           => urlencode($query),
       'image_type'  => 'photo',
       'lang'        => $lang ?: 'en',
       'orientation' => 'horizontal',
-      'category'    => !empty($common_categories) ? $common_categories[0] : '',
-      'per_page'    => 20,
-    ], 'https://pixabay.com/api/');
+      'order'       => 'popular', // ✅ Most relevant results first
+      'per_page'    => 50, // ✅ Get more results to filter from
+    ];
+
+    if (!empty($category)) {
+      $params['category'] = $category;
+    }
+
+    $url = add_query_arg($params, 'https://pixabay.com/api/');
 
     $response = wp_remote_get($url, [
       'timeout' => 20,
@@ -127,12 +158,52 @@ class TemplateSpare_Pixabay_API
     $body = wp_remote_retrieve_body($response);
     $data = json_decode($body, true);
 
-    // Only return hits array to match typical frontend usage
     $images = $data['hits'] ?? [];
 
-    return rest_ensure_response($images);
+    // ✅ NEW: Filter and sort by relevance
+    $images = $this->filter_relevant_images($images, $query);
+
+    // Return top 20 most relevant
+    return rest_ensure_response(array_slice($images, 0, 20));
   }
 
+  /**
+   * ✅ NEW: Filter images by relevance score
+   */
+  private function filter_relevant_images($images, $query)
+  {
+    $query_terms = array_map('strtolower', explode(' ', $query));
+
+    foreach ($images as &$image) {
+      $relevance_score = 0;
+
+      // Check tag matches
+      $tags = strtolower($image['tags']);
+      foreach ($query_terms as $term) {
+        if (stripos($tags, $term) !== false) {
+          $relevance_score += 10;
+        }
+      }
+
+      // Boost by popularity
+      $relevance_score += ($image['likes'] / 100);
+      $relevance_score += ($image['downloads'] / 1000);
+
+      // Boost high-quality images
+      if (!empty($image['imageWidth']) && $image['imageWidth'] >= 1920) {
+        $relevance_score += 5;
+      }
+
+      $image['relevance_score'] = $relevance_score;
+    }
+
+    // Sort by relevance score
+    usort($images, function ($a, $b) {
+      return $b['relevance_score'] <=> $a['relevance_score'];
+    });
+
+    return $images;
+  }
   /**
    * Permissions check
    */
