@@ -45,6 +45,9 @@ class TemplateSpare_Pixabay_API
     $query = sanitize_text_field($request->get_param('query'));
     $lang  = sanitize_text_field($request->get_param('lang'));
 
+    // ✅ Convert your language to Pixabay format
+    $pixabay_lang = $this->get_pixabay_language($lang);
+
     // Words to exclude
     $exclude_words = ['free', 'pro', 'child'];
 
@@ -61,76 +64,27 @@ class TemplateSpare_Pixabay_API
       return true;
     });
 
-    // ✅ NEW: Map news-related terms to better keywords
-    $keyword_mapping = [
-      'news media' => 'journalism newspaper',
-      'local news' => 'news reporter',
-      'regional news' => 'news broadcasting',
-      'media' => 'journalism',
-      'news' => 'newspaper journalist',
-    ];
-
-    // Apply keyword mapping for better results
-    $query_array = array_map(function ($term) use ($keyword_mapping) {
-      $term_lower = strtolower(trim($term));
-      return $keyword_mapping[$term_lower] ?? $term;
-    }, $query_array);
-
-    // Rebuild query string
-    $query = implode(' ', $query_array); // ✅ Changed from comma to space
+    // ✅ Enhance query based on language context
+    $enhanced_query = $this->enhance_query_with_language($query_array, $lang);
 
     // Ensure max 100 characters
-    if (strlen($query) > 100) {
-      $query = substr($query, 0, 100);
+    if (strlen($enhanced_query) > 100) {
+      $enhanced_query = substr($enhanced_query, 0, 100);
     }
 
-    // Compare with allowed Pixabay categories
-    $compare_cat = [
-      "backgrounds",
-      "fashion",
-      "nature",
-      "science",
-      "education",
-      "feelings",
-      "health",
-      "people",
-      "religion",
-      "places",
-      "animals",
-      "industry",
-      "computer",
-      "food",
-      "sports",
-      "transportation",
-      "travel",
-      "buildings",
-      "business", // ✅ Best for news/media
-      "music"
-    ];
+    // Smart category detection
+    $category = $this->detect_category($enhanced_query);
 
-    // ✅ NEW: Smart category detection for news-related queries
-    $category = '';
-    $query_lower = strtolower($query);
-
-    if (preg_match('/\b(news|media|journalist|newspaper|broadcasting|reporter)\b/i', $query_lower)) {
-      $category = 'business'; // Best category for news images
-    } else {
-      // Original category matching logic
-      $query_array_lower = array_map('strtolower', explode(' ', $query));
-      $compare_cat_lower = array_map('strtolower', $compare_cat);
-      $common_categories = array_values(array_intersect($query_array_lower, $compare_cat_lower));
-      $category = !empty($common_categories) ? $common_categories[0] : '';
-    }
-
-    // ✅ NEW: Add order parameter for better relevance
+    // Build parameters
     $params = [
       'key'         => $this->pixabay_api_key,
-      'q'           => urlencode($query),
+      'q'           => urlencode($enhanced_query),
       'image_type'  => 'photo',
-      'lang'        => $lang ?: 'en',
+      'lang'        => $pixabay_lang, // ✅ Use converted language
       'orientation' => 'horizontal',
-      'order'       => 'popular', // ✅ Most relevant results first
-      'per_page'    => 50, // ✅ Get more results to filter from
+      'order'       => 'popular',
+      'per_page'    => 50,
+      'safesearch'  => 'true',
     ];
 
     if (!empty($category)) {
@@ -160,46 +114,167 @@ class TemplateSpare_Pixabay_API
 
     $images = $data['hits'] ?? [];
 
-    // ✅ NEW: Filter and sort by relevance
-    $images = $this->filter_relevant_images($images, $query);
+    // Filter by minimum quality
+    $images = $this->filter_quality_images($images, 10);
 
-    // Return top 20 most relevant
+    // Sort by relevance
+    $images = $this->sort_by_relevance($images, $enhanced_query);
+
+    // Return top 20
     return rest_ensure_response(array_slice($images, 0, 20));
   }
 
   /**
-   * ✅ NEW: Filter images by relevance score
+   * ✅ Map your custom language names to Pixabay language codes
    */
-  private function filter_relevant_images($images, $query)
+  private function get_pixabay_language($lang)
   {
-    $query_terms = array_map('strtolower', explode(' ', $query));
+    $language_map = [
+      'english'  => 'en',
+      'french'   => 'fr',
+      'german'   => 'de',
+      'nepali'   => 'en', // Not supported, fallback to English
+      'rtl'      => 'ar', // RTL → Arabic
+      'indian'   => 'en', // Hindi not supported, fallback to English
+      'spanish'  => 'es',
+      'russian'  => 'ru',
+      'japanese' => 'ja',
+      'china'    => 'zh', // Chinese
+      'turkish'  => 'tr',
+    ];
 
-    foreach ($images as &$image) {
-      $relevance_score = 0;
+    return $language_map[strtolower($lang)] ?? 'en';
+  }
 
-      // Check tag matches
-      $tags = strtolower($image['tags']);
-      foreach ($query_terms as $term) {
-        if (stripos($tags, $term) !== false) {
-          $relevance_score += 10;
+  /**
+   * ✅ Enhance query with language-specific context
+   */
+  private function enhance_query_with_language($query_array, $lang)
+  {
+    $query_string = implode(' ', $query_array);
+    $query_lower = strtolower($query_string);
+
+    // Language-specific enhancements
+    $language_keywords = [
+      'china'    => ['chinese', 'china', 'asian'],
+      'japanese' => ['japanese', 'japan', 'asian'],
+      'indian'   => ['indian', 'india', 'asian'],
+      'rtl'      => ['arabic', 'middle east', 'arabic'],
+      'nepali'   => ['nepali', 'nepal', 'himalayan'],
+    ];
+
+    // Check if we need to add language context
+    $lang_lower = strtolower($lang);
+
+    // Don't add language keywords if query already contains them
+    if (isset($language_keywords[$lang_lower])) {
+      $has_language_context = false;
+      foreach ($language_keywords[$lang_lower] as $keyword) {
+        if (stripos($query_lower, $keyword) !== false) {
+          $has_language_context = true;
+          break;
         }
       }
 
-      // Boost by popularity
-      $relevance_score += ($image['likes'] / 100);
-      $relevance_score += ($image['downloads'] / 1000);
+      // Add language context if not present
+      if (!$has_language_context && in_array($lang_lower, ['china', 'japanese', 'indian', 'nepali'])) {
+        $query_string .= ' ' . $language_keywords[$lang_lower][0];
+      }
+    }
 
-      // Boost high-quality images
-      if (!empty($image['imageWidth']) && $image['imageWidth'] >= 1920) {
+    // General query enhancements
+    $enhancements = [
+      'news media' => 'news media journalism',
+      'local news' => 'local news reporter',
+      'magazine' => 'magazine publication',
+      'newspaper' => 'newspaper press',
+    ];
+
+    foreach ($enhancements as $key => $value) {
+      if (stripos($query_lower, $key) !== false && $query_string === $query_lower) {
+        $query_string = $value;
+        break;
+      }
+    }
+
+    return trim($query_string);
+  }
+
+  /**
+   * ✅ Smart category detection
+   */
+  private function detect_category($query)
+  {
+    $query_lower = strtolower($query);
+
+    $category_keywords = [
+      'people' => ['portrait', 'person', 'man', 'woman', 'people', 'reporter', 'journalist'],
+      'business' => ['news', 'media', 'office', 'meeting', 'professional', 'magazine', 'newspaper'],
+      'places' => ['china', 'japan', 'india', 'nepal', 'location', 'regional', 'local'],
+      'religion' => ['temple', 'religious', 'spiritual', 'shrine', 'monastery'],
+      'buildings' => ['architecture', 'building', 'city', 'urban'],
+      'nature' => ['nature', 'landscape', 'mountain', 'himalayan'],
+      'food' => ['food', 'cuisine', 'dish', 'cooking'],
+      'travel' => ['travel', 'tourism', 'destination'],
+      'music' => ['music', 'concert', 'instrument'],
+    ];
+
+    foreach ($category_keywords as $category => $keywords) {
+      foreach ($keywords as $keyword) {
+        if (stripos($query_lower, $keyword) !== false) {
+          return $category;
+        }
+      }
+    }
+
+    return '';
+  }
+
+  /**
+   * ✅ Filter low-quality images
+   */
+  private function filter_quality_images($images, $min_likes = 10)
+  {
+    return array_filter($images, function ($image) use ($min_likes) {
+      return isset($image['likes']) && $image['likes'] >= $min_likes;
+    });
+  }
+
+  /**
+   * ✅ Sort by relevance
+   */
+  private function sort_by_relevance($images, $query)
+  {
+    $query_terms = array_map('strtolower', preg_split('/\s+/', $query));
+
+    foreach ($images as &$image) {
+      $relevance_score = 0;
+      $tags = strtolower($image['tags'] ?? '');
+
+      foreach ($query_terms as $term) {
+        if (empty($term)) continue;
+
+        if (strpos($tags, $term) !== false) {
+          $relevance_score += 20;
+        }
+
+        if (stripos($tags, substr($term, 0, 4)) !== false) {
+          $relevance_score += 5;
+        }
+      }
+
+      $relevance_score += min(($image['likes'] ?? 0) / 50, 10);
+      $relevance_score += min(($image['downloads'] ?? 0) / 1000, 10);
+
+      if (($image['imageWidth'] ?? 0) >= 1920) {
         $relevance_score += 5;
       }
 
-      $image['relevance_score'] = $relevance_score;
+      $image['_relevance'] = $relevance_score;
     }
 
-    // Sort by relevance score
     usort($images, function ($a, $b) {
-      return $b['relevance_score'] <=> $a['relevance_score'];
+      return ($b['_relevance'] ?? 0) <=> ($a['_relevance'] ?? 0);
     });
 
     return $images;
