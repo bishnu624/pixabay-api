@@ -135,7 +135,7 @@ class TemplateSpare_Pixabay_API
   }
 
   /**
-   * ✅ Enhance query based on content category
+   * ✅ Enhanced query based on content category with ALL categories
    */
   private function enhance_query_by_category($query, $content_category)
   {
@@ -148,9 +148,9 @@ class TemplateSpare_Pixabay_API
         'pixabay_category' => 'animals',
         'boost_terms' => [
           'news' => 'pet news animal',
-          'magazine' => 'pet magazine animal',
+          'magazine' => 'pet magazine animal care',
           'care' => 'pet care veterinary',
-          'training' => 'pet training dog',
+          'training' => 'pet training dog cat',
         ]
       ],
       'business' => [
@@ -160,6 +160,7 @@ class TemplateSpare_Pixabay_API
           'news' => 'business news professional',
           'magazine' => 'business magazine corporate',
           'meeting' => 'business meeting office',
+          'team' => 'business team professional',
         ]
       ],
       'ecommerce' => [
@@ -169,6 +170,7 @@ class TemplateSpare_Pixabay_API
           'news' => 'ecommerce shopping online',
           'magazine' => 'retail magazine shopping',
           'store' => 'online store ecommerce',
+          'cart' => 'shopping cart online',
         ]
       ],
       'lifestyle' => [
@@ -178,6 +180,7 @@ class TemplateSpare_Pixabay_API
           'news' => 'lifestyle wellness living',
           'magazine' => 'lifestyle magazine wellness',
           'health' => 'healthy lifestyle wellness',
+          'home' => 'lifestyle home living',
         ]
       ],
       'personal' => [
@@ -187,6 +190,118 @@ class TemplateSpare_Pixabay_API
           'news' => 'personal story people',
           'magazine' => 'personal lifestyle people',
           'blog' => 'personal blog portrait',
+          'story' => 'personal story individual',
+        ]
+      ],
+      // ✅ NEW CATEGORIES
+      'food' => [
+        'keywords' => ['food', 'cuisine', 'cooking', 'restaurant', 'dish', 'meal'],
+        'pixabay_category' => 'food',
+        'boost_terms' => [
+          'news' => 'food cuisine culinary',
+          'magazine' => 'food magazine culinary',
+          'restaurant' => 'restaurant food dining',
+          'recipe' => 'recipe cooking food',
+          'chef' => 'chef cooking professional',
+        ]
+      ],
+      'covid' => [
+        'keywords' => ['covid', 'pandemic', 'coronavirus', 'virus', 'health crisis'],
+        'pixabay_category' => 'health',
+        'boost_terms' => [
+          'news' => 'covid pandemic health',
+          'vaccine' => 'covid vaccine medical',
+          'safety' => 'covid safety health',
+          'hospital' => 'covid hospital medical',
+          'mask' => 'face mask covid',
+        ]
+      ],
+      'real estate' => [
+        'keywords' => ['real estate', 'property', 'house', 'home', 'building', 'architecture'],
+        'pixabay_category' => 'buildings',
+        'boost_terms' => [
+          'news' => 'real estate property housing',
+          'magazine' => 'real estate magazine property',
+          'market' => 'real estate market housing',
+          'house' => 'house home property',
+          'apartment' => 'apartment building real estate',
+        ]
+      ],
+      'dental' => [
+        'keywords' => ['dental', 'dentist', 'teeth', 'oral health', 'smile'],
+        'pixabay_category' => 'health',
+        'boost_terms' => [
+          'news' => 'dental health teeth',
+          'clinic' => 'dental clinic dentist',
+          'care' => 'dental care oral health',
+          'smile' => 'smile teeth dental',
+          'treatment' => 'dental treatment clinic',
+        ]
+      ],
+      'portfolio' => [
+        'keywords' => ['portfolio', 'design', 'creative', 'work', 'showcase'],
+        'pixabay_category' => 'business',
+        'boost_terms' => [
+          'news' => 'portfolio work professional',
+          'design' => 'design portfolio creative',
+          'creative' => 'creative portfolio design',
+          'work' => 'portfolio work showcase',
+          'project' => 'portfolio project design',
+        ]
+      ],
+      'gadgets' => [
+        'keywords' => ['gadget', 'technology', 'device', 'electronics', 'tech'],
+        'pixabay_category' => 'computer',
+        'boost_terms' => [
+          'news' => 'gadget technology tech',
+          'magazine' => 'gadget magazine technology',
+          'review' => 'gadget review technology',
+          'phone' => 'smartphone gadget technology',
+          'device' => 'device gadget electronics',
+        ]
+      ],
+      'lawyer' => [
+        'keywords' => ['lawyer', 'legal', 'law', 'attorney', 'justice', 'court'],
+        'pixabay_category' => 'business',
+        'boost_terms' => [
+          'news' => 'lawyer legal law',
+          'office' => 'lawyer office legal',
+          'court' => 'court law legal',
+          'justice' => 'justice law legal',
+          'attorney' => 'attorney lawyer legal',
+        ]
+      ],
+      'health' => [
+        'keywords' => ['health', 'medical', 'healthcare', 'wellness', 'doctor'],
+        'pixabay_category' => 'health',
+        'boost_terms' => [
+          'news' => 'health medical healthcare',
+          'magazine' => 'health magazine wellness',
+          'doctor' => 'doctor medical healthcare',
+          'hospital' => 'hospital medical healthcare',
+          'care' => 'healthcare medical wellness',
+        ]
+      ],
+      'education' => [
+        'keywords' => ['education', 'school', 'learning', 'student', 'teacher', 'university'],
+        'pixabay_category' => 'education',
+        'boost_terms' => [
+          'news' => 'education school learning',
+          'magazine' => 'education magazine school',
+          'student' => 'student education learning',
+          'teacher' => 'teacher education school',
+          'university' => 'university education college',
+        ]
+      ],
+      'industry' => [
+        'keywords' => ['industry', 'manufacturing', 'factory', 'production', 'industrial'],
+        'pixabay_category' => 'industry',
+        'boost_terms' => [
+          'news' => 'industry manufacturing production',
+          'magazine' => 'industry magazine manufacturing',
+          'factory' => 'factory industry manufacturing',
+          'production' => 'production industry manufacturing',
+          'worker' => 'industry worker manufacturing',
         ]
       ],
     ];
@@ -233,6 +348,40 @@ class TemplateSpare_Pixabay_API
       'query' => trim($enhanced_query),
       'category' => $config['pixabay_category']
     ];
+  }
+
+  /**
+   * ✅ Updated detect_category with new categories
+   */
+  private function detect_category($query)
+  {
+    $query_lower = strtolower($query);
+
+    $category_keywords = [
+      'animals' => ['pet', 'dog', 'cat', 'animal', 'puppy', 'kitten', 'bird', 'wildlife'],
+      'business' => ['news', 'media', 'office', 'meeting', 'professional', 'business', 'corporate', 'ecommerce', 'shopping', 'lawyer', 'legal', 'portfolio'],
+      'people' => ['portrait', 'person', 'people', 'lifestyle', 'personal', 'reporter', 'journalist', 'individual'],
+      'places' => ['china', 'japan', 'india', 'nepal', 'location', 'regional', 'local', 'city', 'country'],
+      'nature' => ['nature', 'landscape', 'outdoor', 'mountain', 'forest', 'environment'],
+      'food' => ['food', 'cuisine', 'cooking', 'restaurant', 'dish', 'meal', 'recipe', 'chef'],
+      'health' => ['health', 'wellness', 'medical', 'fitness', 'doctor', 'hospital', 'covid', 'pandemic', 'dental', 'dentist'],
+      'buildings' => ['real estate', 'property', 'house', 'home', 'building', 'architecture', 'apartment'],
+      'computer' => ['gadget', 'technology', 'device', 'electronics', 'tech', 'smartphone', 'digital'],
+      'education' => ['education', 'school', 'learning', 'student', 'teacher', 'university', 'college'],
+      'industry' => ['industry', 'manufacturing', 'factory', 'production', 'industrial', 'worker'],
+      'transportation' => ['car', 'vehicle', 'transport', 'travel', 'road'],
+      'sports' => ['sport', 'fitness', 'exercise', 'gym', 'athlete'],
+    ];
+
+    foreach ($category_keywords as $category => $keywords) {
+      foreach ($keywords as $keyword) {
+        if (stripos($query_lower, $keyword) !== false) {
+          return $category;
+        }
+      }
+    }
+
+    return '';
   }
 
   /**
@@ -289,33 +438,7 @@ class TemplateSpare_Pixabay_API
     return $language_map[strtolower($lang)] ?? 'en';
   }
 
-  /**
-   * ✅ Detect category from query
-   */
-  private function detect_category($query)
-  {
-    $query_lower = strtolower($query);
 
-    $category_keywords = [
-      'animals' => ['pet', 'dog', 'cat', 'animal', 'puppy', 'kitten', 'bird'],
-      'business' => ['news', 'media', 'office', 'meeting', 'professional', 'business', 'corporate', 'ecommerce', 'shopping'],
-      'people' => ['portrait', 'person', 'people', 'lifestyle', 'personal', 'reporter', 'journalist'],
-      'places' => ['china', 'japan', 'india', 'nepal', 'location', 'regional', 'local', 'city'],
-      'nature' => ['nature', 'landscape', 'outdoor', 'mountain', 'forest'],
-      'food' => ['food', 'cuisine', 'cooking', 'restaurant'],
-      'health' => ['health', 'wellness', 'medical', 'fitness'],
-    ];
-
-    foreach ($category_keywords as $category => $keywords) {
-      foreach ($keywords as $keyword) {
-        if (stripos($query_lower, $keyword) !== false) {
-          return $category;
-        }
-      }
-    }
-
-    return '';
-  }
 
   /**
    * ✅ Filter quality
