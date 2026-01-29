@@ -108,7 +108,7 @@ class TemplateSpare_Pixabay_API
       'image_type'  => 'photo',
       'lang'        => $lang ?: 'en',
       'orientation' => 'horizontal',
-      //'category'    => !empty($common_categories) ? $common_categories[0] : '',
+      'category'    => !empty($common_categories) ? $common_categories[0] : '',
       'per_page'    => 20,
     ], 'https://pixabay.com/api/');
 
