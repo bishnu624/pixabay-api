@@ -115,7 +115,7 @@ class TemplateSpare_Pixabay_API
         'lang'        => $lang ?: 'en',
         'orientation' => 'horizontal',
         'category'    => $cat,
-        'per_page'    => 2, // fetch 5 images per category
+        'per_page'    => 5, // fetch 5 images per category
       ], 'https://pixabay.com/api/');
 
       $response = wp_remote_get($url, ['timeout' => 20]);
