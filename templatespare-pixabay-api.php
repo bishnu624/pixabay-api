@@ -69,7 +69,7 @@ class TemplateSpare_Pixabay_API
       $query = substr($query, 0, 100);
     }
 
-    // Allowed Pixabay categories
+    // Compare with allowed Pixabay categories
     $compare_cat = [
       "backgrounds",
       "fashion",
@@ -94,54 +94,47 @@ class TemplateSpare_Pixabay_API
     ];
 
     // Normalize to lowercase
-    $query_array_lower   = array_map('strtolower', $query_array);
-    $compare_cat_lower   = array_map('strtolower', $compare_cat);
+    $query_array_lower = array_map('strtolower', $query_array);
+    $compare_cat_lower = array_map('strtolower', $compare_cat);
 
     // Find common categories
     $common_categories = array_values(array_intersect($query_array_lower, $compare_cat_lower));
 
-    // Use common categories or fallback to all allowed categories
-    $categories_to_fetch = !empty($common_categories) ? $common_categories : $compare_cat_lower;
 
-    // Array to store images per category
-    $allImages = [];
+    // Build Pixabay API URL
+    $url = add_query_arg([
+      'key'         => $this->pixabay_api_key,
+      'q'           => urlencode($query),
+      'image_type'  => 'photo',
+      'lang'        => $lang ?: 'en',
+      'orientation' => 'horizontal',
+      'category'    => !empty($common_categories) ? $common_categories[0] : '',
+      'per_page'    => 20,
+    ], 'https://pixabay.com/api/');
 
-    foreach ($categories_to_fetch as $cat) {
-      // Build Pixabay API URL for each category
-      $url = add_query_arg([
-        'key'         => $this->pixabay_api_key,
-        'q'           => urlencode($query),
-        'image_type'  => 'photo',
-        'lang'        => $lang ?: 'en',
-        'orientation' => 'horizontal',
-        'category'    => $cat,
-        'per_page'    => 5, // fetch 5 images per category
-      ], 'https://pixabay.com/api/');
+    $response = wp_remote_get($url, [
+      'timeout' => 20,
+    ]);
 
-      $response = wp_remote_get($url, ['timeout' => 20]);
-
-      if (is_wp_error($response)) {
-        error_log('Pixabay Error (' . $cat . '): ' . $response->get_error_message());
-        $allImages[$cat] = [];
-        continue;
-      }
-
-      $status_code = wp_remote_retrieve_response_code($response);
-      if ($status_code !== 200) {
-        error_log('Pixabay HTTP Error (' . $cat . '): ' . $status_code);
-        $allImages[$cat] = [];
-        continue;
-      }
-
-      $body = wp_remote_retrieve_body($response);
-      $data = json_decode($body, true);
-
-      // Store only hits
-      $allImages[$cat] = $data['hits'] ?? [];
+    if (is_wp_error($response)) {
+      error_log('Pixabay Error: ' . $response->get_error_message());
+      return rest_ensure_response([]);
     }
 
-    // Return all images grouped by category
-    return rest_ensure_response($allImages);
+    $status_code = wp_remote_retrieve_response_code($response);
+
+    if ($status_code !== 200) {
+      error_log('Pixabay HTTP Error: ' . $status_code);
+      return rest_ensure_response([]);
+    }
+
+    $body = wp_remote_retrieve_body($response);
+    $data = json_decode($body, true);
+
+    // Only return hits array to match typical frontend usage
+    $images = $data['hits'] ?? [];
+
+    return rest_ensure_response($images);
   }
 
   /**
